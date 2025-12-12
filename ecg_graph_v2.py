@@ -55,7 +55,11 @@ LEAD_NAMES_12 = ['I', 'II', 'III', 'aVR', 'aVL', 'aVF', 'V1', 'V2', 'V3', 'V4', 
 
 def compute_direction(src_pos: np.ndarray, tgt_pos: np.ndarray) -> np.ndarray:
     """Compute normalized direction vector from source to target."""
+    # direction vector d = target - source
+    # represents voltage difference direction in 3d space
     direction = tgt_pos - src_pos
+    # normalize to unit vector: d_hat = d / ||d||_2
+    # euclidean norm
     norm = np.linalg.norm(direction)
     return direction / norm if norm > 1e-8 else direction
 
@@ -66,16 +70,25 @@ def cartesian_to_spherical(direction: np.ndarray) -> Tuple[float, float]:
     θ (theta): azimuthal angle in xy-plane from x-axis [0, 2π]
     φ (phi): polar angle from z-axis [0, π]
     """
+    # standard cartesian to spherical coordinate transform
+    # phi = arccos(z) gives angle from positive z-axis
+    # theta = arctan2(y,x) gives angle in xy-plane from positive x-axis
+    # from vector calculus and spherical geometry
     x, y, z = direction
-    phi = math.acos(np.clip(z, -1.0, 1.0))
-    theta = math.atan2(y, x)
+    phi = math.acos(np.clip(z, -1.0, 1.0))  # clip to avoid numerical issues
+    theta = math.atan2(y, x)  # atan2 handles all quadrants properly
     if theta < 0:
-        theta += 2 * math.pi
+        theta += 2 * math.pi  # map to [0, 2pi] range
     return theta, phi
 
 
 def spherical_to_cartesian(theta: float, phi: float) -> np.ndarray:
     """Convert spherical coordinates back to unit direction vector."""
+    # inverse transform from spherical to cartesian
+    # x = sin(phi) * cos(theta)
+    # y = sin(phi) * sin(theta)
+    # z = cos(phi)
+    # this from standard spherical coordinate definitions
     x = math.sin(phi) * math.cos(theta)
     y = math.sin(phi) * math.sin(theta)
     z = math.cos(phi)

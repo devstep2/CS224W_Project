@@ -92,8 +92,14 @@ def sample_reconstruction_targets(
         [13-24]: 12 negated standard leads
         [25]: negated ICM
     """
-    target_indices = list(range(13))
+    # stochastic target sampling for curriculum learning
+    # start with primary leads, occasionally add negated leads
+    # helps model learn bidirectional physics gradually
+    target_indices = list(range(13))  # always include primary 13 leads
 
+    # with probability p, add some negated leads
+    # negated leads teach model about voltage polarity
+    # based on ecg physics: lead_BA = -lead_AB
     if random.random() < include_negated_prob:
         negated_indices = list(range(13, 26))
         sampled_negated = random.sample(negated_indices, min(num_negated_to_sample, len(negated_indices)))
@@ -107,6 +113,9 @@ class MultiTaskSHDModel(nn.Module):
     1. Reconstruction head (coordinate-based decoder from ECGGNNV2)
     2. Classification head (late fusion with tabular features)
     """
+    # multi-task learning framework
+    # shared encoder learns representations useful for both tasks
+    # helps with regularization and can improve generalization
 
     def __init__(
         self,
@@ -116,22 +125,30 @@ class MultiTaskSHDModel(nn.Module):
         cls_hidden: int = 128,
     ):
         super().__init__()
-        self.gnn = gnn
+        self.gnn = gnn  # shared encoder for both tasks
         latent_dim = gnn.latent_dim
 
+        # adaptive pooling collapses temporal dimension
+        # h_pooled = mean(h_temporal) across time
         self.cls_pool = nn.Sequential(
             nn.AdaptiveAvgPool1d(1),
             nn.Flatten(),
         )
 
+        # tabular feature encoder
+        # processes clinical/demographic features (age, sex, bmi, etc)
         self.tabular_encoder = nn.Sequential(
             nn.Linear(tabular_dim, tabular_hidden),
-            nn.SiLU(),
+            nn.SiLU(),  # smooth activation function
             nn.Dropout(0.1),
             nn.Linear(tabular_hidden, tabular_hidden),
             nn.SiLU(),
         )
 
+        # late fusion classifier
+        # concatenates ecg features with tabular features
+        # h_fused = [h_ecg; h_tabular]
+        # standard multimodal fusion approach
         self.classifier = nn.Sequential(
             nn.Linear(latent_dim + tabular_hidden, cls_hidden),
             nn.SiLU(),
@@ -139,7 +156,7 @@ class MultiTaskSHDModel(nn.Module):
             nn.Linear(cls_hidden, cls_hidden // 2),
             nn.SiLU(),
             nn.Dropout(0.2),
-            nn.Linear(cls_hidden // 2, 1),
+            nn.Linear(cls_hidden // 2, 1),  # binary classification logit
         )
 
     def forward(
@@ -305,6 +322,9 @@ def train_epoch(
         logits = outputs['logits'].squeeze(-1)
         reconstructed = outputs['reconstructed']
 
+        # binary cross entropy loss for classification
+        # BCE = -[y*log(p) + (1-y)*log(1-p)] where p = sigmoid(logit)
+        # standard loss for binary classification (used in all deep learning)
         cls_loss = F.binary_cross_entropy_with_logits(logits, labels)
 
         extended_ecg = graph_batch.extended_ecg 
@@ -314,8 +334,14 @@ def train_epoch(
         extended_ecg = extended_ecg.view(B, 26, T)
         target_ecg = extended_ecg[:, target_indices, :] 
 
+        # mean squared error for reconstruction
+        # MSE = (1/n) * sum((pred - target)^2)
+        # standard regression loss
         recon_loss = F.mse_loss(reconstructed, target_ecg)
 
+        # compute pearson correlation for monitoring quality
+        # r = cov(X,Y) / (std(X)*std(Y))
+        # ranges from -1 to +1, measures linear correlation
         with torch.no_grad():
             pred_flat = reconstructed.reshape(-1, T)
             tgt_flat = target_ecg.reshape(-1, T)
@@ -325,10 +351,22 @@ def train_epoch(
             denominator = pred_centered.norm(dim=-1) * tgt_centered.norm(dim=-1) + 1e-8
             pearson_corr = (numerator / denominator).mean()
 
+        # multi-task loss: L = w1*L_cls + w2*L_recon
+        # balances classification and reconstruction objectives
+        # similar to multi-task learning (caruana 1997)
         loss = cls_weight * cls_loss + recon_weight * recon_loss
+        # backpropagation: compute gradients dL/dw using chain rule
+        # automatic differentiation
         loss.backward()
 
+        # gradient clipping to prevent exploding gradients
+        # clips norm of gradient vector to max value of 1.0
+        # helps training stability
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+        
+        # optimizer step: update weights w = w - lr * grad
+        # using adamw optimizer
+        # adaptive learning rates + weight decay regularization
         optimizer.step()
 
         total_loss += loss.item()
@@ -541,7 +579,14 @@ def main():
     model = MultiTaskSHDModel(gnn).to(DEVICE)
     print(f"Parameters: {sum(p.numel() for p in model.parameters()):,}")
 
+    # adamw optimizer
+    # adam with decoupled weight decay regularization
+    # better than adam for transformers and deep networks
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=0.01)
+    
+    # cosine annealing learning rate schedule
+    # lr(t) = eta_min + (eta_max - eta_min) * (1 + cos(pi*t/T)) / 2
+    # smooth decay from initial lr to eta_min
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
         optimizer, T_max=args.epochs, eta_min=1e-6
     )

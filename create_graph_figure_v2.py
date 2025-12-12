@@ -46,17 +46,27 @@ OTHER_LEAD_DEFINITIONS = {
 
 def get_lead_spherical_coords(src_electrode: str, tgt_electrode: str):
     """Get spherical coordinates for a lead given electrode names."""
+    # computing direction vector from source to target electrode
+    # this be the voltage difference vector V_tgt - V_src from standard ecg theory
     src_pos = ELECTRODE_POSITIONS[src_electrode]
     tgt_pos = ELECTRODE_POSITIONS[tgt_electrode]
     direction = tgt_pos - src_pos
+    
+    # normalize to unit vector: d_hat = d / ||d||_2
+    # euclidean norm from linear algebra basics
     norm = np.linalg.norm(direction)
     if norm > 1e-8:
         direction = direction / norm
     x, y, z = direction
+    
+    # convert cartesian to spherical coordinates
+    # phi = arccos(z) is polar angle from z-axis, range [0, pi]
+    # theta = arctan2(y,x) is azimuthal angle in xy-plane, range [-pi, pi]
+    # standard spherical coordinate system
     phi = np.arccos(np.clip(z, -1.0, 1.0))
     theta = np.arctan2(y, x)
     if theta < 0:
-        theta += 2 * np.pi
+        theta += 2 * np.pi  # map to [0, 2pi] range
     return theta, phi
 
 

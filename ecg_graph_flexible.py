@@ -62,6 +62,12 @@ BASE_EDGES = [
 
 def spherical_to_cartesian(theta: float, phi: float, r: float = 1.0) -> np.ndarray:
     """Convert spherical to Cartesian coordinates."""
+    # standard spherical to cartesian transform
+    # x = r * sin(theta) * cos(phi)
+    # y = r * sin(theta) * sin(phi)
+    # z = r * cos(theta)
+    # where theta is azimuthal angle and phi is polar angle
+    # from basic vector calculus
     x = r * np.sin(theta) * np.cos(phi)
     y = r * np.sin(theta) * np.sin(phi)
     z = r * np.cos(theta)
@@ -70,24 +76,38 @@ def spherical_to_cartesian(theta: float, phi: float, r: float = 1.0) -> np.ndarr
 
 def compute_base_electrode_positions() -> Dict[str, np.ndarray]:
     """Compute 3D positions for all base electrodes."""
+    # positions derived from standard ecg lead system geometry
     positions = {}
 
+    # wilson central terminal at origin (reference point)
+    # WCT = (RA + LA + LL) / 3 in standard ecg theory
     positions['WCT'] = np.array([0.0, 0.0, 0.0], dtype=np.float32)
 
+    # precordial electrodes V1-V6 placed on chest
+    # positions based on spherical angles from standard placement
     for lead in ['V1', 'V2', 'V3', 'V4', 'V5', 'V6']:
         theta, phi = LEAD_ANGLES[lead]
         positions[lead] = spherical_to_cartesian(theta, phi)
 
+    # limb electrodes RA, LA, LL form einthoven triangle
+    # positions computed from lead I and lead II directions
+    # this geometry enforces einthoven's law: II = I + III
     theta_I, phi_I = LEAD_ANGLES['I']
     dir_I = spherical_to_cartesian(theta_I, phi_I)
 
     theta_II, phi_II = LEAD_ANGLES['II']
     dir_II = spherical_to_cartesian(theta_II, phi_II)
 
+    # solve system of equations from lead definitions
+    # lead I = LA - RA, lead II = LL - RA
+    # with constraint RA + LA + LL = 0 (centered triangle)
     positions['RA'] = -(dir_I + dir_II) / 3
     positions['LA'] = (2 * dir_I - dir_II) / 3
     positions['LL'] = (2 * dir_II - dir_I) / 3
 
+    # virtual midpoint electrodes for augmented leads
+    # goldberger's central terminals
+    # mid_LA_LL is reference for aVR, etc
     positions['mid_LA_LL'] = (positions['LA'] + positions['LL']) / 2
     positions['mid_RA_LL'] = (positions['RA'] + positions['LL']) / 2
     positions['mid_RA_LA'] = (positions['RA'] + positions['LA']) / 2

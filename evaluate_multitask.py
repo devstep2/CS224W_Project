@@ -112,10 +112,19 @@ def evaluate_classification(model, loader, query_coords, device):
     all_labels = np.array(all_labels)
 
     preds = (all_probs >= 0.5).astype(int)
+    # classification metrics from standard ml evaluation
     metrics = {
+        # auroc = area under roc curve, measures discrimination ability
+        # integral of tpr vs fpr curve
         'auroc': roc_auc_score(all_labels, all_probs),
+        # auprc = area under precision-recall curve
+        # better for imbalanced datasets than auroc
         'auprc': average_precision_score(all_labels, all_probs),
+        # accuracy = (tp + tn) / (tp + tn + fp + fn)
+        # simple fraction of correct predictions
         'accuracy': accuracy_score(all_labels, preds),
+        # f1 = 2 * (precision * recall) / (precision + recall)
+        # harmonic mean of precision and recall
         'f1': f1_score(all_labels, preds),
         'positive_rate': all_labels.mean(),
         'predicted_positive_rate': preds.mean(),
@@ -156,7 +165,12 @@ def evaluate_reconstruction(model, loader, query_coords, device):
     for i, name in enumerate(lead_names):
         pred = all_reconstructed[:, i, :] 
         tgt = all_targets[:, i, :]
+        # mean squared error: MSE = (1/n) sum((pred - target)^2)
+        # measures average squared deviation
         mse = F.mse_loss(pred, tgt).item()
+        # pearson correlation coefficient
+        # r = sum((x - mean_x)(y - mean_y)) / sqrt(sum(x - mean_x)^2 * sum(y - mean_y)^2)
+        # measures linear relationship strength, range [-1, 1]
         pred_centered = pred - pred.mean(dim=-1, keepdim=True)
         tgt_centered = tgt - tgt.mean(dim=-1, keepdim=True)
         numerator = (pred_centered * tgt_centered).sum(dim=-1)
